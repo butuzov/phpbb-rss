@@ -7,12 +7,10 @@ define('IN_PHPBB', true);
 function parse($message) {
 	global $data , $board_config, $userdata;
 	$bbcode_uid = $data['bbcode_uid'];
-	if ( !$board_config['allow_html'] && $data['enable_html']){
-		$message = preg_replace('#(<)([\/]?.*?)(>)#is', "&lt;\\2&gt;", $message);
-	}
-	//
-	// Parse message and/or sig for BBCode if reqd
-	//
+	
+	$message = preg_replace('#(<)([\/]?.*?)(>)#is', "&lt;\\2&gt;", $message);
+	
+	
 if ( $board_config['allow_bbcode'] && $bbcode_uid != ''){
 	$message = ( $board_config['allow_bbcode'] ) ? bbencode_second_pass($message, $data['bbcode_uid']) : preg_replace('/\:[0-9a-z\:]+\]/si', ']', $message);
 	}
@@ -34,62 +32,58 @@ include($phpbb_root_path . 'includes/bbcode.'.$phpEx);
 
 
 $db = new sql_db($dbhost, $dbuser, $dbpasswd, $dbname, false);
-if(!$db->db_connect_id)
-{
+if(!$db->db_connect_id){
    die("Could not connect to the database");
 }
 
 
 //
 // Extracting variables grom GET array if register globals turned to ON
-//
 
-if (ini_get('register_globals') != 1)
-{   
-   if (version_compare(phpversion(), "4.1.0") >= 0 )
-      {
+if (ini_get('register_globals') != 1){   
+	if (version_compare(phpversion(), "4.1.0") >= 0 ){
       extract($_GET);
-      } else {
+    } else {
       extract($HTTP_GET_VARS);
-      }
+    }
 }
 
-$dataSQL = "SELECT * FROM ". CONFIG_TABLE;
-   
-   $feedData = array();
-   $res = $db->sql_query($dataSQL);
-   while ($data = $db->sql_fetchrow($res) )
-   {
-      if ($data['config_name'] == "board_email") $data['config_value'] = str_replace("@", "(+@+)", $data['config_value']);
-      $board_config[$data['config_name']]=$data['config_value'];
-   }
-   
+// BoardConfig configuraton
+$board_config['pub'] = date("D, d M Y G:i:s T", time());
+$board_config['ext'] = $phpEx;
+$board_config['board_email'] = str_replace("@", "-at-", $board_config['board_email']);
+$board_config['board_email'] = str_replace(".", "-dot-", $board_config['board_email']);
+
+
+//Language
+if (!file_exists(@phpbb_realpath($phpbb_root_path . 'language/lang_' . $board_config['default_lang'] . '/lang_main.'.$phpEx)) )	{
+   $board_config['default_lang'] = 'english';
+}
+include($phpbb_root_path . 'language/lang_' . $board_config['default_lang'] . '/lang_main.' . $phpEx);
+
+$board_config['encoding'] = $lang['ENCODING'];
 //
 // Getting a user data if any exist 
 // password can be encrypted or no.
 //
 
-if ((isset($id) && is_numeric(trim($id))) && isset($password))
-{
-   
-   $SQL = "SELECT * FROM ". USERS_TABLE ." WHERE user_active = '1' AND (user_password = MD5('".htmlentities($password)."') OR user_password = '".htmlentities($password)."') AND user_id <> " . ANONYMOUS ." AND user_id = '$id'";
-
-   if($db->sql_numrows($db->sql_query($SQL)) == 1) {
+if ((isset($id) && is_numeric(trim($id))) && isset($password)){
+	$SQL = "SELECT * FROM ". USERS_TABLE ." WHERE user_active = '1' AND (user_password = MD5('".htmlentities($password)."') OR user_password = '".htmlentities($password)."') AND user_id <> " . ANONYMOUS ." AND user_id = '$id'";
+	if($db->sql_numrows($db->sql_query($SQL)) == 1) {
       $userdata = $db->sql_fetchrow($db->sql_query($SQL));
-   } else {
+	} else {
       $SQL = "SELECT * FROM ". USERS_TABLE ." WHERE  user_id = " . ANONYMOUS;
       if($db->sql_numrows($db->sql_query($SQL)) == 1) $userdata = $db->sql_fetchrow($db->sql_query($SQL)); 
-   }
+	}
 } else {
-   $SQL = "SELECT * FROM ". USERS_TABLE ." WHERE  user_id = " . ANONYMOUS;
-   if($db->sql_numrows($db->sql_query($SQL)) == 1) $userdata = $db->sql_fetchrow($db->sql_query($SQL)); 
+	$SQL = "SELECT * FROM ". USERS_TABLE ." WHERE  user_id = " . ANONYMOUS;
+	if($db->sql_numrows($db->sql_query($SQL)) == 1) {
+		$userdata = $db->sql_fetchrow($db->sql_query($SQL));
+	}
 }
 $userdata['session_logged_in'] = true;
 
-if (!file_exists(@phpbb_realpath($phpbb_root_path . 'language/lang_' . $board_config['default_lang'] . '/lang_main.'.$phpEx)) )	{
-   $board_config['default_lang'] = 'english';
-}
-include($phpbb_root_path . 'language/lang_' . $board_config['default_lang'] . '/lang_main.' . $phpEx);
+
 //
 // Selecting a forums id to view
 //
@@ -97,105 +91,79 @@ $forums = array();
 
 if (!empty($c) && is_numeric($c))
 {
-   $select2view = "SELECT f.forum_id FROM  ". FORUMS_TABLE ." f WHERE f.cat_id = ". $c ;
+    array_push($forums,$data['forum_id']);
    
-   $res = $db->sql_query($select2view);
-   while ($data = $db->sql_fetchrow($res) )
-   {
-      array_push($forums,$data['forum_id']);
-   }
-}
-elseif(!empty($f) && is_numeric($f))
-{
-   $forumauth = auth(AUTH_READ, $f, $userdata);
-   if ($forumauth["auth_read"] == true){
+} elseif(!empty($f) && is_numeric($f)){
       array_push($forums,$f);
-   }
-   unset($forumauth);
-}
-else
-{
-   
-   $select2view = "SELECT f.forum_id FROM ". FORUMS_TABLE ." f ";
-   $res = $db->sql_query($select2view);
-   while ($data = $db->sql_fetchrow($res) )
-   {
-      $forumauth = auth(AUTH_READ, $data['forum_id'], $userdata);
-      if ($forumauth["auth_read"] == true){
-         array_push($forums,$data['forum_id']);
-      }
-      unset($forumauth);
-   }
+} else {
+	$select2view = "SELECT f.forum_id FROM ". FORUMS_TABLE ." f ";
+	$res = $db->sql_query($select2view);
+	while ($data = $db->sql_fetchrow($res)){
+		array_push($forums,$data['forum_id']);
+	}
 }
 
+$allowedForums = array();
+foreach ($forums as $forum_id) {
+	$forumauth = auth(AUTH_READ, $forum_id, $userdata);
+    if ($forumauth["auth_read"] == true){
+         array_push($allowedForums,$forum_id);
+    }
+    unset($forumauth);
+}
+
+// geting a topics numbers that need to be show in rss feed
+
+$topicsSql = "SELECT t.topic_id FROM  ". TOPICS_TABLE ." t  WHERE t.forum_id IN (".implode(",", $allowedForums).") ORDER BY t.topic_id DESC LIMIT 0, 20";
+$topicsRes =  $db->sql_query($topicsSql);
+$topicsArray= array();
+while ($topicsData = $db->sql_fetchrow($topicsRes)) $topicsArray[] = $topicsData['topic_id'];
+
+$postidsSql = "SELECT DISTINCT pt.post_id FROM  ". POSTS_TABLE ." pt, ". TOPICS_TABLE ." t  WHERE pt.topic_id = t.topic_id AND t.topic_id IN (".implode(',', $topicsArray).") GROUP BY pt.topic_id DESC LIMIT 0, 20";
+
+$postidsRes =  $db->sql_query($postidsSql);
+$postidsArray= array();
+while ($postidsData = $db->sql_fetchrow($postidsRes)) $postidsArray[] = $postidsData['post_id'];
+
+
+$postsSql = "SELECT ptt.post_text, pt.enable_bbcode, pt.enable_html, pt.enable_sig, pt.enable_smilies,   ptt.bbcode_uid, t.topic_title, t.topic_time, t.topic_id  FROM ". POSTS_TABLE ." pt, ". POSTS_TEXT_TABLE ." ptt , ". TOPICS_TABLE ." t  WHERE t.topic_id = pt.topic_id AND ptt.post_id = pt.post_id AND pt.post_id IN (".implode(',', $postidsArray).") ORDER BY pt.post_id DESC ";
 
 
 $templateSQL = "SELECT th.template_name, c.* FROM ". THEMES_TABLE ." th, ". CONFIG_TABLE ." c WHERE th.themes_id = c.config_value AND  c.config_name = 'default_style'";
 $rssConf = $db->sql_fetchrow($db->sql_query($templateSQL));
-
-$template_path = 'templates/' ;
-$template_name = $rssConf['template_name'];
-$template = new Template($phpbb_root_path . $template_path . $template_name );  
-
-   
-
-$forumInList = "";
-for ($i=0; $i < count($forums); $i++)
-{
-   $forumInList .= $forums[$i];
-   if ($i != (count($forums) - 1)) $forumInList .=", ";
-}
-$topics_sql = "SELECT t.topic_id  FROM  ". TOPICS_TABLE ." t  WHERE t.forum_id IN (". $forumInList .") ORDER BY t.topic_id DESC LIMIT 0, 20";
-$tres =  $db->sql_query($topics_sql);
-$tarr = array();
-while ($tdata = $db->sql_fetchrow($tres)) $tarr[] = $tdata['topic_id'];
-
-if (count($tarr) == 0)
-{
-   $template->assign_block_vars('nofeeditems', true);
-} else {
-   $topicInList = "";
-   for ($i=0; $i < count($tarr); $i++){
-   $topicInList .= $tarr[$i];
-   if ($i != (count($tarr) - 1)) $topicInList .=", ";
-   }
-   
-}
- $topicInList;
-
-$posts_sql = "SELECT ptt.post_text, pt.enable_bbcode, pt.enable_html, pt.enable_sig, pt.enable_smilies,   ptt.bbcode_uid, t.topic_title, t.topic_time, t.topic_id  FROM  ". POSTS_TEXT_TABLE ." ptt ,". POSTS_TABLE ." pt , ". TOPICS_TABLE ." t  WHERE ptt.post_id  = pt.post_id AND pt.post_id  = t.topic_id AND pt.topic_id IN (". $topicInList .") ORDER BY pt.topic_id DESC LIMIT 0, 20";
-
-header("Content-type: text/xml");
+$template = new Template($phpbb_root_path . 'templates/' . $rssConf['template_name'] );  
 $template->set_filenames(array('rss' => 'rss20.tpl'));
-$board_config['ext'] = $phpEx;
+$board_config['template_name']=$rssConf['template_name'];
+
+if($db->sql_numrows($db->sql_query($postsSql)) != 0){
+	
+    $postsRes = $db->sql_query($postsSql);
+	
+    while ($data = $db->sql_fetchrow($postsRes)){
+           
+	    if (!isset($dates['lastbuid'])) {
+			
+			$dates['lastbuid'] = $data['post_time'];
+			
+	    }
+		   
+        $template->assign_block_vars('feeditems', array("TOPIC_TITLE" => $data['topic_title'],
+            "TOPIC_TEXT" => parse($data['post_text']),"TOPIC_ID" => $data['topic_id'],
+            "TOPIC_TIME" => date("D, d M Y G:i:s T", $data['topic_time']))
+        );
+    }  
+   $board_config['lastbuid'] = date("D, d M Y G:i:s T", $dates['lastbuid']);
+   
+} else {
+	
+   $board_config['lastbuid'] = $board_config['pub'];
+   $template->assign_block_vars('nofeeditems', true);
+   
+}
+
 $template->assign_vars($board_config);
 
-$dates = array();
-if($db->sql_numrows($db->sql_query($posts_sql)) != 0)
-{
-       $res = $db->sql_query($posts_sql);
-      while ($data = $db->sql_fetchrow($res) )
-         {
-           if (!isset($dates['lastbuid'])) $dates['lastbuid'] = $data['post_time'];
-           $template->assign_block_vars('feeditems',
-            array(
-               "TOPIC_TITLE" => $data['topic_title'],
-               "TOPIC_TEXT" => parse($data['post_text']),
-               "TOPIC_ID" => $data['topic_id'],
-               "FExt" => $phpEx,
-               "TOPIC_TIME" => date("D, d M Y G:i:s T", $data['post_time'])
-               )
-            );
-         }  
-} else {
-   $template->assign_block_vars('nofeeditems', true);
-            
-}
-$dates['lastbuid'] = date("D, d M Y G:i:s T", $dates['lastbuid']);
-$dates['pub'] = date("D, d M Y G:i:s T", time());
-$template->assign_vars($dates);
-
-
+header("Content-type: text/xml");
 $template->pparse('rss');
 
 ?>
